@@ -31,16 +31,39 @@ class CudaTracer():
         print('Contexts',gpudf.Context.unique())
         print('Contexts',gpudf.Stream.unique())
         return gpudf
-    def get_copy_activity(self):
+    def get_large_h2d_copy_activity(self,min_trf_size_mb=1):
         gpudf=self.get_gpu_activity()
         copydf=gpudf[gpudf.Size.notnull()]
         #filter(["Size","Throughput","SrcMemType","DstMemType","Name"])
         print(copydf.Name.unique())
         print(copydf.Size.unique())
-        largetrf=copydf[copydf.Size>1]
+        largetrf=copydf[copydf.Size>min_trf_size_mb]
         largetrf=largetrf[largetrf.Name=='[CUDA memcpy HtoD]']
         print(len(largetrf))
         largetrf.to_csv('/tmp/largetrf.csv',index=None)
+        return largetrf
+
+def resnet50_analysis(tracer):
+    batches=tracer.get_large_h2d_copy_activity()
+    batches['batch_time']=batches.Start.shift(-1)-batches.Start
+    print('Num batches found:', len(batches))
+    print(batches)
+    analysis_batch_num=10
+    batch_start_time=batches['Start'].iloc[analysis_batch_num]
+    nxt_batch_start_time=batches['Start'].iloc[analysis_batch_num+1]
+    
+    print(batch_start_time,nxt_batch_start_time)
+    batchdf=tracer.get_gpu_activity()
+    batchdf=batchdf[batchdf.Start>=batch_start_time]
+    batchdf=batchdf[batchdf.Start<=nxt_batch_start_time]
+    batchdf.to_csv('/tmp/batchdf.csv',index=None)
+    print(batchdf.tail())
+    print(batchdf.Stream.value_counts())
+    batchdf_main=batchdf[batchdf.Duration>20]
+    batchdf_main.to_csv('/tmp/batchdf_main.csv',index=None)
+    print(batchdf.Duration.sum())
+    
+
 
 
 
@@ -50,5 +73,5 @@ if __name__ == '__main__':
     parser.add_argument("tracefile")
     args = parser.parse_args()
     tracer=CudaTracer(args.tracefile)
-    tracer.get_copy_activity()
+    resnet50_analysis(tracer)
 
